@@ -1,16 +1,14 @@
-from typing import Generator
-
+# app/deps.py
+from fastapi import Depends
 from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
 
 from .db import SessionLocal
 from . import models
-from .security import SECRET_KEY, ALGORITHM
+from . import security
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Session:
+    """Yield a DB session and make sure it's closed afterwards."""
     db = SessionLocal()
     try:
         yield db
@@ -18,31 +16,22 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-security = HTTPBearer()
-
-
-def get_current_user(
+async def get_current_user(
+    token: str = Depends(security.oauth2_scheme),
     db: Session = Depends(get_db),
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> models.User:
-    token = credentials.credentials
+):
+    """
+    Dependency that returns the current authenticated user
+    using the token provided by OAuth2.
+    """
+    return await security.get_current_user(token=token, db=db)
 
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
 
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        sub = payload.get("sub")
-        if sub is None:
-            raise credentials_exception
-        user_id = int(sub)
-    except (JWTError, ValueError):
-        raise credentials_exception
-
-    user = db.query(models.User).get(user_id)
-    if user is None:
-        raise credentials_exception
-    return user
+async def get_current_active_user(
+    current_user = Depends(get_current_user),  # note: no type hint on purpose
+):
+    """
+    Optionally enforce 'active' users; right now just returns the user.
+    """
+    # If you later add an 'is_active' flag to models.User, you can enforce it here.
+    return current_user

@@ -8,6 +8,7 @@ from .deps import get_db
 from .routes_meals import router as meals_router
 from .routes_diabetes import router as diabetes_router
 from .routes_auth import router as auth_router
+from .routes_recommendations import router as recommendations_router
 from .security import get_password_hash
 
 
@@ -34,6 +35,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(meals_router)
 app.include_router(diabetes_router)
+app.include_router(recommendations_router)
 
 # Create database tables on startup
 Base.metadata.create_all(bind=engine)

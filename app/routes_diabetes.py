@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from . import models, schemas
-from .deps import get_db, get_current_user
+from .deps import get_db, get_current_active_user
+from .models import User
+
 
 router = APIRouter(
     prefix="/diabetes",
@@ -16,7 +18,7 @@ router = APIRouter(
 def create_bg_reading(
     reading: schemas.BGReadingCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     db_reading = models.BloodGlucoseReading(
         value=reading.value,
@@ -32,7 +34,7 @@ def create_bg_reading(
 @router.get("/bg-readings", response_model=list[schemas.BGReadingRead])
 def list_bg_readings(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_active_user)
 ):
     return (
         db.query(models.BloodGlucoseReading)
@@ -44,7 +46,7 @@ def list_bg_readings(
 @router.get("/bg-stats/today", response_model=schemas.BGStatsToday)
 def get_bg_stats_today(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     today = date.today()
 
@@ -55,7 +57,7 @@ def get_bg_stats_today(
         func.count(models.BloodGlucoseReading.id),
     ).filter(
         models.BloodGlucoseReading.user_id == current_user.id,
-        func.date(models.BloodGlucoseReading.created_at) == today,
+        func.date(models.BloodGlucoseReading.timestamp) == today,
     ).one()
 
     return schemas.BGStatsToday(
@@ -69,24 +71,24 @@ def get_bg_stats_today(
 @router.get("/bg-stats/7d", response_model=schemas.BGStats7Days)
 def get_bg_stats_7_days(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     today = date.today()
     start_date = today - timedelta(days=6)  # last 7 days including today
 
     rows = (
         db.query(
-            func.date(models.BloodGlucoseReading.created_at).label("day"),
+            func.date(models.BloodGlucoseReading.timestamp).label("day"),
             func.avg(models.BloodGlucoseReading.value).label("avg"),
             func.count(models.BloodGlucoseReading.id).label("count"),
         )
         .filter(
             models.BloodGlucoseReading.user_id == current_user.id,
-            func.date(models.BloodGlucoseReading.created_at) >= start_date,
-            func.date(models.BloodGlucoseReading.created_at) <= today,
+            func.date(models.BloodGlucoseReading.timestamp) >= start_date,
+            func.date(models.BloodGlucoseReading.timestamp) <= today,
         )
-        .group_by(func.date(models.BloodGlucoseReading.created_at))
-        .order_by(func.date(models.BloodGlucoseReading.created_at))
+        .group_by(func.date(models.BloodGlucoseReading.timestamp))
+        .order_by(func.date(models.BloodGlucoseReading.timestamp))
         .all()
     )
 
@@ -106,7 +108,7 @@ def get_bg_stats_7_days(
 @router.get("/bg-stats/variability", response_model=schemas.BGVariabilityStats)
 def get_bg_variability(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     values = [
         v[0]
@@ -142,7 +144,7 @@ def get_bg_variability(
 def create_meal_log(
     meal_log: schemas.MealLogCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     db_log = models.MealLog(
         meal_id=meal_log.meal_id,
@@ -159,7 +161,7 @@ def create_meal_log(
 @router.get("/meal-logs", response_model=list[schemas.MealLogRead])
 def list_meal_logs(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     return (
         db.query(models.MealLog)
@@ -172,7 +174,7 @@ def list_meal_logs(
 def recommend_meals(
     req: schemas.MealRecommendationRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     meals = db.query(models.Meal).all()
     recommendations = []
