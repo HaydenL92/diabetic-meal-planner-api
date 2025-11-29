@@ -1,14 +1,17 @@
 # app/deps.py
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from jose import JWTError
 
 from .db import SessionLocal
 from . import models
-from . import security
+from .security import decode_access_token
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 
-def get_db() -> Session:
-    """Yield a DB session and make sure it's closed afterwards."""
+def get_db():
     db = SessionLocal()
     try:
         yield db
@@ -16,22 +19,30 @@ def get_db() -> Session:
         db.close()
 
 
-async def get_current_user(
-    token: str = Depends(security.oauth2_scheme),
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    """
-    Dependency that returns the current authenticated user
-    using the token provided by OAuth2.
-    """
-    return await security.get_current_user(token=token, db=db)
+    try:
+        payload = decode_access_token(token)
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise ValueError()
+    except (JWTError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = db.query(models.User).filter(models.User.id == int(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user
 
 
-async def get_current_active_user(
-    current_user = Depends(get_current_user),  # note: no type hint on purpose
+def get_current_active_user(
+    current_user = Depends(get_current_user),
 ):
-    """
-    Optionally enforce 'active' users; right now just returns the user.
-    """
-    # If you later add an 'is_active' flag to models.User, you can enforce it here.
     return current_user

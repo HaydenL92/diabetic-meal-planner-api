@@ -5,6 +5,18 @@ import { useEffect, useState, FormEvent } from "react";
 
 const API_BASE = "http://localhost:8000";
 
+
+type USDAFoodSearchResult = {
+  fdc_id: number;
+  description: string;
+  calories_kcal: number | null;
+  carbs_g: number | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  fiber_g: number | null;
+  sugar_g: number | null;
+};
+
 type Meal = {
   id: number;
   name: string;
@@ -65,6 +77,25 @@ export default function MealsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingMealCreate, setLoadingMealCreate] = useState(false);
   const [loadingLogCreate, setLoadingLogCreate] = useState(false);
+
+  const [usdaQuery, setUsdaQuery] = useState("");
+  const [usdaResults, setUsdaResults] = useState<USDAFoodSearchResult[]>([]);
+  const [usdaLoading, setUsdaLoading] = useState(false);
+  const [usdaError, setUsdaError] = useState<string | null>(null);
+
+  const [newMeal, setNewMeal] = useState({
+  name: "",
+  description: "",
+  calories_kcal: null as number | null,
+  carbs_g: null as number | null,
+  protein_g: null as number | null,
+  fat_g: null as number | null,
+  fiber_g: null as number | null,
+  sugar_g: null as number | null,
+  glycemic_index: null as number | null,
+  tags: "",
+  photo_url: "",
+});
 
   // Load token on first render
   useEffect(() => {
@@ -137,6 +168,52 @@ export default function MealsPage() {
       console.error(err);
     }
   }
+
+  async function searchUsdaFoods() {
+  if (!usdaQuery.trim()) {
+    setUsdaError("Please enter a search term.");
+    return;
+  }
+
+  const token = getAuthToken();
+  if (!token) {
+    setUsdaError("You must be logged in to search USDA foods.");
+    return;
+  }
+
+  setUsdaLoading(true);
+  setUsdaError(null);
+
+  try {
+    const params = new URLSearchParams({
+      q: usdaQuery,
+      page: "1",
+      page_size: "10",
+    });
+
+    const resp = await fetch(
+      `http://127.0.0.1:8000/food-search/search-foods?${params.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`API error ${resp.status}: ${text}`);
+    }
+
+    const data = (await resp.json()) as USDAFoodSearchResult[];
+    setUsdaResults(data);
+  } catch (err: any) {
+    console.error(err);
+    setUsdaError(err.message ?? "Failed to search foods.");
+  } finally {
+    setUsdaLoading(false);
+  }
+}
 
   async function fetchLogs() {
     const jwt = getAuthToken();
@@ -308,6 +385,21 @@ export default function MealsPage() {
     return analysis.find((a) => a.meal_id === id);
   }
 
+  function useUsdaResult(result: USDAFoodSearchResult) {
+  setNewMeal((prev) => ({
+    ...prev,
+    name: result.description,
+    description: result.description,
+    calories_kcal: result.calories_kcal,
+    carbs_g: result.carbs_g,
+    protein_g: result.protein_g,
+    fat_g: result.fat_g,
+    fiber_g: result.fiber_g,
+    sugar_g: result.sugar_g,
+    // leave GI/tags/photo as-is so you can fill them in manually
+  }));
+}
+
   function impactBadgeClasses(impact: string) {
     switch (impact) {
       case "low":
@@ -343,6 +435,71 @@ export default function MealsPage() {
             {error}
           </div>
         )}
+        {/* USDA Food Search */}
+<section className="mt-8 bg-slate-900 border border-slate-700 rounded-xl p-4">
+  <h2 className="text-lg font-semibold mb-3">
+    Search foods (USDA FoodData Central)
+  </h2>
+
+  <div className="flex flex-col md:flex-row gap-3 mb-3">
+    <input
+      type="text"
+      className="flex-1 rounded-md bg-slate-800 border border-slate-600 px-3 py-2 text-sm"
+      placeholder="Search for a food (e.g. 'apple', 'chicken breast')"
+      value={usdaQuery}
+      onChange={(e) => setUsdaQuery(e.target.value)}
+    />
+    <button
+      type="button"
+      onClick={searchUsdaFoods}
+      disabled={usdaLoading}
+      className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-sm font-medium disabled:opacity-60"
+    >
+      {usdaLoading ? "Searching..." : "Search"}
+    </button>
+  </div>
+
+  {usdaError && (
+    <p className="text-sm text-red-400 mb-2">{usdaError}</p>
+  )}
+
+  {usdaResults.length > 0 && (
+    <div className="space-y-3 max-h-80 overflow-y-auto">
+      {usdaResults.map((f) => (
+        <div
+          key={f.fdc_id}
+          className="border border-slate-700 rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+        >
+          <div>
+            <p className="font-medium text-sm">{f.description}</p>
+            <p className="text-xs text-slate-300 mt-1">
+              {f.calories_kcal ?? "–"} kcal · {f.carbs_g ?? "–"}g carbs ·{" "}
+              {f.protein_g ?? "–"}g protein · {f.fat_g ?? "–"}g fat
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Fiber: {f.fiber_g ?? "–"}g · Sugar: {f.sugar_g ?? "–"}g
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => useUsdaResult(f)}
+            className="self-start md:self-auto px-3 py-1 rounded-md bg-sky-600 hover:bg-sky-700 text-xs font-medium"
+          >
+            Use in meal form
+          </button>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {!usdaLoading && !usdaError && usdaResults.length === 0 && (
+    <p className="text-xs text-slate-500">
+      Search to see foods from USDA and click o
+      ne to fill in the meal form.
+    </p>
+  )}
+</section>
 
         {/* Create Meal */}
         <section className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow-xl">

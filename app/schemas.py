@@ -1,5 +1,6 @@
 from datetime import datetime, date
 from pydantic import BaseModel, EmailStr
+from typing import List, Optional
 
 
 class UserLogin(BaseModel):
@@ -100,6 +101,25 @@ class MealRecommendationResponse(BaseModel):
     bg_category: str
     explanation: str
     suggestions: list[MealSuggestion]
+
+
+class ExternalFoodItem(BaseModel):
+    fdc_id: int
+    description: str
+    brand_owner: Optional[str] = None
+    data_type: Optional[str] = None
+    calories_kcal: Optional[float] = None
+    carbs_g: Optional[float] = None
+    protein_g: Optional[float] = None
+    fat_g: Optional[float] = None
+    fiber_g: Optional[float] = None
+    sugar_g: Optional[float] = None
+    source: str = "usda_fooddata_central"
+
+
+class ExternalFoodSearchResponse(BaseModel):
+    query: str
+    items: List[ExternalFoodItem]
 
 
 class BGReadingBase(BaseModel):

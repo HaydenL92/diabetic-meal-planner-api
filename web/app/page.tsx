@@ -130,38 +130,52 @@ export default function HomePage() {
   }
 
   async function handleLogin(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setIsLoggingIn(true);
+  e.preventDefault();
+  setError(null);
+  setIsLoggingIn(true);
 
-    try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+  try {
+    // Build form-encoded body as required by OAuth2PasswordRequestForm
+    const body = new URLSearchParams();
+    body.append("username", email);   // backend treats username as email
+    body.append("password", password);
 
-      const data = (await res.json()) as any;
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
 
-      if (!res.ok) {
-        throw new Error(data.detail || "Login failed");
-      }
+    const data = (await res.json()) as any;
 
-      const login = data as LoginResponse;
-      setToken(login.access_token);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("access_token", login.access_token);
-      }
-    } catch (err: any) {
-      setError(err.message || "Login failed");
-      setToken(null);
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("access_token");
-      }
-    } finally {
-      setIsLoggingIn(false);
+    if (!res.ok) {
+      // FastAPI usually returns {"detail": "..."} on errors
+      const detail =
+        typeof data?.detail === "string"
+          ? data.detail
+          : Array.isArray(data?.detail)
+          ? data.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ")
+          : "Login failed";
+      throw new Error(detail);
     }
+
+    const login = data as LoginResponse;
+    setToken(login.access_token);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("access_token", login.access_token);
+    }
+  } catch (err: any) {
+    setError(err.message || "Login failed");
+    setToken(null);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("access_token");
+    }
+  } finally {
+    setIsLoggingIn(false);
   }
+}
 
   async function fetchBgReadings() {
     const jwt = getAuthToken();

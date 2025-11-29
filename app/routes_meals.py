@@ -207,7 +207,7 @@ def update_meal(
     meal_id: int,
     meal_update: schemas.MealUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     db_meal = (
         db.query(models.Meal)
